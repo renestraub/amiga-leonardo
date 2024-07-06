@@ -1,0 +1,180 @@
+
+		CSEG
+
+PlayFx:		MACRO
+		movem.l	d0-d7/a0-a6,-(sp)
+		move	#\4,d1
+		move.l	#\1,a2
+		move	#\3,d2
+		move	#\2,d3
+		move	#\5,d4
+		bsr	FxPlay
+		movem.l	(sp)+,d0-d7/a0-a6
+		ENDM
+
+LoadFile:	MACRO   (Ziel,Offset,Laenge)
+		lea	\1,a0
+		move.l	#\2,d6
+		move.l	#\3,d7
+		bsr	Read
+		ENDM
+
+LoadCruFile:	MACRO	(Ziel,Offset,Laenge)
+		lea	\1,a0
+		move.l	#\2,d6
+		move.l	#\3,d7
+		bsr	Read
+		lea	\1,a0
+		bsr	Decruncher
+		ENDM		
+
+SaveFile:	MACRO   (Ziel,Offset,Laenge)
+		lea	\1,a0		
+		move.l	#\2,d6
+		move.l	#\3,d7
+		bsr	Write
+		ENDM
+
+GetJoy:		MACRO
+		bsr	_GetJoy
+		ENDM
+
+SetSprPos:	MACRO
+		bsr	_SetSprPos
+		ENDM
+
+
+; 		Alle Unterroutinen die von den Macros aufgerufen werden
+
+		bra	_EndSubMacros
+
+_SetSprPos:
+		movem.l	d0-d2,-(sp)
+		and.b	#%11111000,3(A1)
+
+		btst	#0,d0
+		beq.s	XEven
+
+		or.b	#1,3(A1)
+XEven:
+		lsr	#1,d0
+		move.b	d0,1(A1)
+
+		cmp	#256,d1
+		blo	YStart
+
+		sub.b	#256,d1
+		or.b	#4,3(A1)
+YStart:
+		move.b	d1,(A1)
+
+		cmp	#256,d2
+		blo	YStop
+
+		sub.b	#256,d2
+		or.b	#2,3(A1)
+YStop:
+		move.b	d2,2(A1)
+		movem.l	(sp)+,d0-d2
+		rts
+
+_GetJoy:
+		moveq	#0,d0
+		moveq	#0,d1
+
+		lea	KeyBoard+17,a0
+		cmp.b	#$E0,(A0)
+		beq	Oben2
+		cmp.b	#$E1,(A0)
+		beq	Unten2
+		cmp.b	#$E2,(A0)
+		beq	Rechts2
+		cmp.b	#$E3,(A0)
+		beq	Links2
+		move	$dff00c,d3
+
+		btst	#9,d3
+		bne.s	Links
+		btst	#1,d3
+		bne.s	Rechts
+
+		move	d3,d4
+		move	d4,d5
+		lsr	#1,d4
+		and	#$100,d4
+		and	#$100,d5
+		eor	d4,d5
+		bne	Oben
+
+		move	d3,d4
+		move	d4,d5
+		lsr.w	#1,d4
+		and	#1,d4
+		and	#1,d5
+		eor	d4,d5
+		bne.s	Unten
+
+		bra	End
+
+Unten2:		bsr	ClrButton
+		bra	Unten
+
+Oben2:		bsr	ClrButton
+		bra	Oben
+
+Links2:		bsr	ClrButton
+		bra	Links
+
+Rechts2:	bsr	ClrButton
+		bra	Rechts
+
+ClrButton:	tst.b	MenuInt
+		bne	1$
+		clr.b	EndFlag
+1$:	
+		rts
+
+Links:
+		moveq	#-1,d0
+		bra	End
+Rechts:
+		moveq	#1,d0
+		bra	End
+Oben:
+		moveq	#-1,d1
+		bra	End
+Unten:
+		moveq	#1,d1
+End:
+		rts
+
+
+Delay250:	move	#250,d0
+1$:		nop
+		nop
+		dbf	d0,1$
+                rts
+
+FxPlay:		tst	FxFlag
+		beq	1$
+		rts
+
+1$:		moveq	#1,d0
+		bsr	LockVoices
+		move	#1,$dff096
+		bsr	Delay250
+		lea	$dff0a0,a4
+		move.l	a2,(a4)
+		move	d2,4(A4)
+		move	d3,6(A4)
+		move	d4,8(A4)
+		move	#$8001,$dff096
+		bsr	Delay250
+		bsr	Delay250		; wegen 68020!
+		moveq	#0,d0
+		move.l	d0,(A4)
+		move	#1,4(A4)
+		rts
+
+_EndSubMacros:
+

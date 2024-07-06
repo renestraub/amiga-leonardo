@@ -1,0 +1,48 @@
+#Diskmakefile for Leonardo, 28-Jan-89 / 29-Jan-89
+
+!B 1   6528         ; Ab Track 1: Anzahl Bytes := 6528
+!B 14  6496
+!B 23  6464
+!B 30  6432
+!B 39  6416
+!B 43  6400
+!B 51  6416
+!B 54  6400
+!B 59  6384
+!B 87  6352
+!B 120 6336
+!B 125 6368
+!B 128 6336
+!B 135 6176
+!B 137 6144
+!B 147 6120
+
+!P 19536               ; Product-Code LEONARDO
+!D 1                   ; Disk Nummer 1
+!I filenames.i         ; Name des generierten Assembler-Files
+!N "LEONARDO"          ; Name der Diskette
+!0 Track0              ; Name des Files für Track 0
+
+IntroFiles/BOOTBILD
+IntroFiles/INTROBACK
+IntroFiles/INTROANIM
+IntroFiles/INTROSONG
+IntroFiles/INTROFX
+Intro/Intro.abs
+
+GameFiles/bigfile
+DummyFiles/dummy0
+GameFiles/gameover
+GameFiles/caught
+DummyFiles/dummy1
+GameFiles/menu
+DummyFiles/dummy2
+GameFiles/fx
+GameFiles/ende
+GameFiles/help
+Game/Game.abs
+DummyFiles/dummy3
+GameFiles/hiscores
+
+
+

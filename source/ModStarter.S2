@@ -1,0 +1,239 @@
+**************************************************************************
+**                                                                      **
+**   ModStarter.S - Init Disk, lädt Leonardo-Demo und Game etc.         **
+**                                                                      **
+**************************************************************************
+**                                                                      **
+**   Modification History                                               **
+**   --------------------                                               **
+**                                                                      **
+**   25-Aug-88   Created this file!                                     **
+**   19-Oct-88   Changed from Dugger to RingSide                        **
+**   28-Jan-89   Changed from RingSide to Leonardo                      **
+**   29-Jan-89   Last update                                            **
+**                                                                      **
+**************************************************************************
+
+		INCLUDE	"exec.i"
+		INCLUDE	"execbase.i"
+		INCLUDE	"copper.i"
+		INCLUDE	"relcustom.i"
+		INCLUDE	"filenames.i"
+
+		XREF	_InitDisk,_ReadFile
+
+BOOTPICADDR:	EQU	$68000
+PLANESIZE:	EQU	8000
+DEPTH:		EQU	5		; 6=Halfbrite
+
+INTROADDR:	EQU	$c0
+GAMEADDR:	EQU	$100
+
+
+		dc.b	"CHW!"
+
+;STARTMIX
+		lea	custom,a4		; A4 :  Custom (global!)
+		suba.l	a6,a6
+		clr.l	(a6)+
+		jsr	DoDelay(PC)
+		move.w	#$7fff,intena(a4)	; ALLE Interrupts off
+		move.w	#$7fff,dmacon(a4)	; PLANE|COPER|SPRITE|AUDIO OFF
+		movea.l	(a6),a6			; A6 :  ExecBase
+		lea	supie(PC),a5
+		jsr	-30(a6)
+supie:		lea	$80000,SP
+		move.w	#$8200,dmacon(a4)	; MASTER DMA on
+		bsr	DoDelay
+
+	*** CDisk initialisieren
+
+		move.w	#PRODUCT,d0
+		moveq	#1,d1			; 1 Drive
+		lea	MFMBuffer,a0		; MFM-Buffer
+		bsr	_InitDisk
+
+	*** Ladebild anzeigen
+
+		bsr	ShowLoadPic
+
+	*** Testen ob Resetvektoren verbogen, ggf. COLD-Reset
+
+		move.l	eb_ColdCapture(a6),d0
+		or.l	eb_CoolCapture(a6),d0
+		or.l	eb_WarmCapture(a6),d0
+		or.l	eb_KickTagPtr(a6),d0
+		tst.l	d0
+		bne	Reset
+
+	*** Intro aufrufen
+
+		btst.b	#6,$bfe001			; Linke Maustaste ?
+		beq.s	NoIntro				; ja ---> Kein Intro
+		lea	INTROADDR,a1
+		move.l	#FN_INTRO.ABS,d1
+		bsr	DoMod
+NoIntro:
+
+	*** Game aufrufen
+
+		lea	GAMEADDR,a1
+		move.l	#FN_GAME.ABS,d1
+		bsr	DoMod
+
+gugg:		move.w	d0,$dff180
+		addq.w	#1,d0
+		bra	gugg
+
+	*** Resetten (hellgrün), bei 68020er mit Cache Total-Alles-Absturz
+
+Reset:		move.w	#$7fff,$dff09a		; Interrupts off
+		move.w	#$7fff,$dff096		; DMA off
+		lea	Supie(PC),a5
+		Exec	Supervisor
+
+Supie:		move	#$2700,sr
+		lea	$fc00d0,a0		; Reset-Routine
+		lea	4,a1			; von hier an löschen
+		move.l	#$4ed04ed0,d0		; 2x JMP (a0)
+		move.l	#$22c060fc,0		; l:move.l d0,(a1)+, bra.s l
+		move.w	#$cfb,$dff180		; hellgrün
+		jmp	0
+
+TrackDiskName:	dc.b	"trackdisk.device",0
+
+**************************************************************************
+
+	*** D0 bytes ab A1 reservieren, Modul laden und starten, freigeben
+
+DoMod:		move.l	#(BOOTPICADDR-$1000)/4-1,d0
+		lea	$1000,a0
+		bsr	DoClear			; GANZEN Speicher löschen
+
+		movea.l	a1,a0			; Ladeadresse
+		move.l	d1,d0			; Filename
+		jsr	_ReadFile(PC)
+		bne	Reset
+		move.l	#$10293847,d0		; Magic für A0 gültig
+		lea	MFMBuffer,a0		; MFM-Buffer
+		jmp	(a1)			; Programm-Modul starten
+
+**************************************************************************
+
+	*** Lade-Bild anzeigen
+
+ShowLoadPic:	movem.l	d1-d7/a0-a6,-(SP)
+		move.l	#FN_BOOTBILD,d0
+		lea	BOOTPICADDR,a0
+		bsr	_ReadFile
+
+		clr.l	spr+sprdata(a4)
+		move.l	#CopperList,cop1lc(a4)
+		move.w	copjmp1(a4),d0
+
+		lea	ColorPalette,a0
+		lea	color(a4),a1
+		moveq	#31,d0
+.clearloop:	clr.w	(a0)+			; 32 Farben löschen
+		move.w	#0,(a1)+
+		dbf	d0,.clearloop
+		bsr	DoDelay
+		move.w	#$8080,dmacon(a4)	; COPPER DMA on
+
+	*** Bild langsam einblenden mit Farbtabelle (A0)
+
+		moveq	#15,d3			; Anzahl mögliche Grauwerte
+		lea	BOOTPICADDR+DEPTH*PLANESIZE,a2	; Farbtabelle
+inloop1:	movea.l	a2,a0			; Source-Palette
+		lea	ColorPalette,a1		; Ziel-Palette
+
+		moveq	#31,d4		; 32 Farben
+inloop2:	move.w	(a1),d2 	; 1. Farbe holen
+		move.w	(a0),d1 	; Endzustand
+		andi.w	#$f00,d2	; obersten Schieber isolieren
+		andi.w	#$f00,d1	; -"-
+		cmp.w	d2,d1		; schon erreicht?
+		beq	redok		; ja, nichts ändern
+		addi.w	#$100,d2
+redok:
+		move.w	(a1),d0 	; 1. Farbe holen
+		move.w	(a0),d1 	; Endzustand
+		andi.w	#$0f0,d0	; mittleren Schieber isolieren
+		andi.w	#$0f0,d1	; -"-
+		cmp.w	d0,d1		; schon erreicht?
+		beq	greenok		; ja, nichts ändern
+		addi.w	#$010,d0
+greenok:	or.w	d0,d2		; sichern
+
+		move.w	(a1),d0 	; 1. Farbe holen
+		move.w	(a0)+,d1	; Endzustand
+		andi.w	#$00f,d0	; untersten Schieber isolieren
+		andi.w	#$00f,d1	; -"-
+		cmp.w	d0,d1		; schon erreicht?
+		beq	blueok		; ja, nichts ändern
+		addq.w	#$001,d0
+blueok:		or.w	d0,d2		; sichern
+
+		move.w	d2,(a1)+	; abspeichern
+		dbf	d4,inloop2	; Alle 32 Farben
+
+		bsr	vsync
+		lea	ColorPalette,a0
+		lea	color(a4),a1
+		moveq	#31,d0		; 32 Farben
+.colloop2:	move.w	(a0)+,(a1)+
+		dbf	d0,.colloop2
+		dbf	d3,inloop1
+
+		movem.l	(SP)+,d1-d7/a0-a6
+		rts
+
+vsync:		cmpi.b	#200,vhposr(a4)
+		bne	vsync
+		rts
+
+DoDelay:	move.w	#5000,d0
+DoDe1:		tst.l	(a6)
+		dbeq	d0,DoDe1		; Wie dbf, Verarschung
+		rts
+;ENDMIX
+
+**************************************************************************
+
+.clr1:		clr.l	(a0)+
+DoClear:	subq.l	#1,d0
+		bpl.s	.clr1
+		rts
+
+**************************************************************************
+
+		DSEG
+CopperList:	cmovel	BOOTPICADDR+0*PLANESIZE,bpl1pt
+		cmovel	BOOTPICADDR+1*PLANESIZE,bpl2pt
+		cmovel	BOOTPICADDR+2*PLANESIZE,bpl3pt
+		cmovel	BOOTPICADDR+3*PLANESIZE,bpl4pt
+		cmovel	BOOTPICADDR+4*PLANESIZE,bpl5pt
+		cmovel	BOOTPICADDR+5*PLANESIZE,bpl6pt
+		cmove	$2c81,diwstrt
+		cmove	$f4c1,diwstop
+		cmove	$0038,ddfstrt	
+		cmove	$00d0,ddfstop	
+		cmove	$1000*DEPTH+$200,bplcon0	; DEPTH Planes
+		cmove	$0000,bplcon1
+		cmove	$0000,bplcon2
+		cmove	$0000,bpl1mod
+		cmove	$0000,bpl2mod
+		cmovel	0,sprpt+0*4
+		cmovel	0,sprpt+1*4
+		cmovel	0,sprpt+2*4
+		cmovel	0,sprpt+3*4
+		cmovel	0,sprpt+4*4
+		cmovel	0,sprpt+5*4
+		cmovel	0,sprpt+6*4
+		cmovel	0,sprpt+7*4
+		cmove	$8100,dmacon		; PLANE DMA on
+		cend
+
+		BSS	ColorPalette,2*32
+		BSS	MFMBuffer,16384
+

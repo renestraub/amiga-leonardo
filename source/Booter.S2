@@ -1,0 +1,106 @@
+**************************************************************************
+*                                                                        *
+*             T H E   B O O T B L O C K   (PC-relativ!)                  *
+*                                                                        *
+*  Last update: 28-Jan-89  CHW  Adapted from RingSide booter             *
+*                                                                        *
+**************************************************************************
+
+ADDRESS:	EQU	$72000			; Adresse vom ModStarter
+SIZE:		EQU	$1000			; muß durch 512 aufgehen
+
+		org	$50000
+		load	$50000
+		blk.l	256,'CHW!'
+		org	$50000
+		load	$50000
+
+block:		dc.b	'DOS',0			; Identification
+		dc.l	0			; Bootblock-Checksum
+		dc.l	880			; Pointer to root-block
+
+
+o:		movem.l	d1-d7/a1-a6,-(SP)
+		move.l	a1,a4			; A4 :  IO-Request
+		move.l	4.w,a6			; A6 :  AbsExecBase
+
+	; *** Bootblock nach ORG verschieben damit LineMixer's JMPs gehen
+
+CopyBlock:	lea	block(PC),a0
+		lea	$50000,a1
+		moveq	#1024/16,d0		; Lattice C lässt grüßen
+		lsl.l	#4,d0
+		jsr	-624(a6)		; CopyMem()
+;STARTMIX
+
+	; *** Register initialisieren, Bildschirm schwarz
+
+		movem.l	regs(PC),d2/a2/a3/a5
+		move.w	#$018f,$096(a5)		; BitPlane & Audio DMA off
+		moveq	#0,d0
+		move.l	d0,$180(a5)		; Farben 0 & 1
+
+	; *** Alle Captures und Residentmodule rauswerfen
+
+		move.l	d0,42(a6)		; ColdCapture
+		move.l	d0,46(a6)		; CoolCapture
+		move.l	d0,50(a6)		; WarmCapture
+		move.l	d0,546(a6)		; KickMemPtr
+		move.l	d0,550(a6)		; KickTagPtr
+		move.l	d0,554(a6)		; KickCheckSum
+
+	; *** Speicher für ModStarter reservieren
+
+		move.l	a2,a1			; Adresse
+		move.l	d2,d0			; Size
+		jsr	-204(a6)		; AllocAbs()
+		tst.l	d0
+		beq	error			; No Mem --->
+
+	; *** ModStarterer einlesen
+
+		move.w	#2,28(a4)		; CMD_Read
+		movem.l	d2/a2/a3,36(a4)		; Länge, Adresse, Offset
+		move.l	a4,a1			; IO-Request
+		jsr	-456(a6)		; DoIO()
+
+		lea	4(a2),a0		; Einsprung
+		moveq	#0,d0			; Success
+		movem.l	(SP)+,d1-d7/a1-a6
+		rts
+
+	; *** Fehler-Einsprung
+
+error:		move.l	4.w,a6
+		move.w	#$41f,$dff180		; blau
+		lea	$fc00d0,a5
+		move.l	d0,38(a6)		; ChkBase
+		move.w	d0,82(a6)		; CheckSum
+		jsr	-30(a6)			; Supervisor()
+
+;ENDMIX
+
+regs:		dc.l	SIZE			; D2 :  Size
+		dc.l	ADDRESS			; A2 :  Adresse des Laders
+		dc.l	1024			; A3 :  Disk-Offset
+		dc.l	$dff000			; A5 :  Custom
+
+		dc.l	65530,19536		; Kennung,Product-Code
+
+DiskName:	dc.b	"disk.resource",0
+		dc.b	"romboot.library",0
+		dc.b	"mathieee.resource",0,0,0
+
+		dc.b	"AMIGA HIGH DENSITY DISK FORMAT. "
+		dc.b	"(C) 1988 BY CHRISTIAN A. WEBER, "
+		dc.b	"THE MEGA-MIGHTY AMIGA WIZARD !! ",0,0
+		dc.b	"HEY, PIRATE! IF YOU CRACK THIS G"
+		dc.b	"AME, PLEASE SEND ME A COPY OF TH"
+		dc.b	"E CRACKED VERSION! (IF YOU'RE A "
+		dc.b	"REAL INSIDER, YOU KNOW MY ADDRES"
+		dc.b	"S...) BUT ANYWAY, THIS PROTECTIO"
+		dc.b	"N IS MUCH TOO SOPHISTICATED FOR "
+		dc.b	"YOU!",0,0
+		dc.b	"GREETINGS -chw",0
+		dc.b	0,0,0,0,0,0,0,0
+
